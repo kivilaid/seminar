@@ -31,9 +31,9 @@ jobs:
       - name: Detect upstream default branch
         id: detect
         run: |
-            if git rev-parse --verify upstream/main >/dev/null 2>&1; then
-              echo "UPSTREAM_BRANCH=main" >> $GITHUB_ENV
-              echo "Detected upstream branch: main"
+            if git rev-parse --verify upstream/master >/dev/null 2>&1; then
+              echo "UPSTREAM_BRANCH=master" >> $GITHUB_ENV
+              echo "Detected upstream branch: master"
             elif git rev-parse --verify upstream/master >/dev/null 2>&1; then
               echo "UPSTREAM_BRANCH=master" >> $GITHUB_ENV
               echo "Detected upstream branch: master"
