@@ -1,0 +1,83 @@
+name: Sync Fork with Upstream
+
+on:
+  schedule:
+    - cron: "0 4 * * *"   # Runs every day at 04:00 UTC
+  workflow_dispatch:       # Allows manual trigger
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout your fork (master)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0       # Need full history for merge
+          persist-credentials: false
+
+      - name: Configure git user (bot identity)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote (if missing)
+        run: |
+          git remote | grep -q upstream || git remote add upstream https://github.com/lselector/seminar.git
+          git remote -v
+
+      - name: Fetch upstream branches
+        run: git fetch upstream
+
+      - name: Detect upstream default branch
+        id: detect
+        run: |
+            if git rev-parse --verify upstream/main >/dev/null 2>&1; then
+              echo "UPSTREAM_BRANCH=main" >> $GITHUB_ENV
+              echo "Detected upstream branch: main"
+            elif git rev-parse --verify upstream/master >/dev/null 2>&1; then
+              echo "UPSTREAM_BRANCH=master" >> $GITHUB_ENV
+              echo "Detected upstream branch: master"
+            else
+              echo "Could not find upstream main or master branch."
+              exit 1
+
+      - name: Merge upstream changes into fork (master)
+        run: |
+          set -e
+          BEFORE=$(git rev-parse HEAD)
+          # Try fast-forward first (cleanest)
+          if git merge --ff-only upstream/$UPSTREAM_BRANCH 2>/dev/null; then
+            echo "Fast-forward merge applied."
+          else
+            echo "Fast-forward not possible; attempting a regular merge."
+            git merge --no-edit upstream/$UPSTREAM_BRANCH || {
+              echo "Automatic merge failed due to conflicts. Resolve manually.";
+              exit 1;
+            }
+          fi
+          AFTER=$(git rev-parse HEAD)
+          if [ "$BEFORE" = "$AFTER" ]; then
+            echo "NO_PUSH=true" >> $GITHUB_ENV
+            echo "No new commits pulled."
+          else
+            echo "NO_PUSH=false" >> $GITHUB_ENV
+            echo "New commits merged."
+          fi
+
+      # OPTIONAL (alternative): If you prefer a linear history, replace the Merge step above
+      # with the rebase block below (only use one). Rebase is riskier if conflicts occur.
+      # - name: Rebase fork onto upstream
+      #   run: |
+      #     set -e
+      #     git rebase upstream/$UPSTREAM_BRANCH || {
+      #       echo "Rebase failed (conflicts). Resolve manually.";
+      #       exit 1;
+      #     }
+      #     echo "NO_PUSH=false" >> $GITHUB_ENV
+
+      - name: Push updated master
+        if: env.NO_PUSH == 'false'
+        run: |
+          git push origin HEAD:master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
